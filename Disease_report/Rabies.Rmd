@@ -1,0 +1,194 @@
+---
+title: "Rabies"
+author: "Maria Oliveira"
+date: "2022-10-10"
+output:
+  html_document:
+    df_print: paged
+---
+```{r global_options, include=FALSE}
+
+#Este bocadinho é preciso para não ter output de session info e início de packages no ficheiro final
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, tidy.opts=list(width.cutoff=60)) 
+suppressPackageStartupMessages(library(ggplot2, tidyverse))
+
+#Carregar logo as libraries todas no início
+library(devtools)
+library(RCurl)
+library(Rempres)
+library(leaflet)
+library(RColorBrewer)
+library(tidyverse)
+library(lubridate)
+library(sp)
+library(plotly)
+
+
+start <- today() - years(10)
+stop <- today()
+
+doenca<-"Rabies"
+dinicio<-gsub("-","", start)
+dfim<-gsub("-","", stop)
+
+focos<-Empres.data(doenca,,dinicio,dfim,dinicio,dfim)
+focos$ano<-substr(focos$observationDateYYYYMMDD,1,4)
+
+```
+
+Note: The data presented in this report was collected from the last 10 years, from `r today() - years(10)` until `r today()`.
+
+### <span style="color: darkgreen;"> **Disease Facts**   </span>
+#### <span style="color: darkgreen;"> General information </span>
+Rabies is a viral disease that affects the central nervous system of mammals (dogs, cats, foxes etc.), including humans. The rabies virus is particularly present in the saliva and brain of infected animals, most commonly dogs, and is **transmitted by a bite**, with approximately 99% of human cases due to bites by infected dogs. Bats also represent an important reservoir in certain regions. A high presence in wildlife species can create multiple opportunities for cross-species transmission, mostly affecting domestic animals and humans.
+
+The rabies virus belongs to the genus **Lyssavirus**, a group of viruses responsible for causing encephalitis. Twelve distinct lyssavirus species can be distinguished within the genus, the classical rabies virus (RABV) being the most important one for public and animal health. The different RABV variants circulate in carnivores, most commonly domestic dogs and cats and, depending on the continent, various other species of carnivores (including foxes and jackals) or chiroptera (bats).
+
+
+
+```{r, echo = FALSE, fig.cap="Source: FAO Empres-i"}
+# Gráfico de barras casos por espécie
+focos_esp_ano <- select(focos, speciesDescription, ano)
+
+focos_esp_ano <- separate(focos_esp_ano, speciesDescription, sep= ",", into = c("status", "species"))
+
+hist_focos_ano_espe <- plot_ly( type= "histogram", name="Every species", 
+                               y= focos_esp_ano$species) %>%
+  layout(
+    title = "Frequency of Events in different species", 
+    yaxis = list(title = "Species"),
+    xaxis = list(title = "Frequency"),
+    bargap=0.1)
+
+hist_focos_ano_espe 
+```
+
+
+****
+#### <span style="color: darkgreen;"> Public Health Concerns </span>
+As it can pass between animals and humans, rabies is a a **zoonosis**.
+The incubation period may vary from several weeks to several months, but once rabies symptoms appear the disease is **invariably fatal** both in animals and humans.
+Most deaths from rabies, both in humans and animals, are due to inadequate access to public health resources and preventative treatment. This means that low-income countries are disproportionately affected by the disease.
+In countries where the disease is endemic, measures should be taken to control and reduce the risk of infection in vulnerable populations (wildlife, stray and domestic animals), thus creating a barrier between the animal source and humans. Human deaths from rabies exposure can be prevented by developing and implementing a coordinated strategy against the disease.
+
+****
+#### <span style="color: darkgreen;"> Clinical Signs </span>
+The virus generally remains at the entry site (such as a bite wound) in the body for a period of time before travelling along the nerves to the brain, where it multiplies. The virus then moves along nerves to the salivary glands.  
+The period before clinical signs appear in an infected animal can vary from several days to several months depending on the strain of virus, the species, the individual and the point of entry in the body. The disease can therefore be transmitted to other animals and humans via the saliva of an infected animal, sometimes even before the onset of clinical signs in the infected animal, posing a dangerous threat to anyone coming into physical contact with the animal.  
+The clinical signs of rabies may vary depending on the effect of the virus on the brain. In its classical form, the disease manifests itself with sudden behavioural changes: infected animals, especially wild animals, can lose their natural fear of other animals and humans, allowing them to come into unusually close proximity and contact, especially with humans. As the disease evolves, it causes cerebral and cranial nerve dysfunction, ataxia (a lack of muscle control or coordination of voluntary movements), weakness, progressive paralysis, seizures,
+difficulty breathing and swallowing, as well as excessive salivation. Aggressive behaviours and self-mutilation can also be observed. The disease progressively leads to death.
+In some cases, however, the behavioural changes are minimal, and the animal may die rapidly without showing any significant clinical signs.
+
+****
+#### <span style="color: darkgreen;"> Geographical distribution </span>
+Classical rabies virus is found throughout the world. Some countries have implemented stringent sanitary measures, which led to the successful elimination of the disease. In other countries, the disease remains endemic, with rabies present in dogs and/or in wildlife.
+
+****
+#### <span style="color: darkgreen;"> Epidemiology </span>
+Here is a graphic representation of the geographic distribution of Rabies events since `r year(today() - years(10))`.
+```{r, echo = FALSE, fig.cap="Source: FAO Empres-i"}
+
+paises<- geojsonio::geojson_read("custom.geo.json", what="sp")
+
+
+data_Map <- paises[paises$sovereignt %in% focos$country, ]
+
+casos_pais <- mutate(
+  summarize(
+    group_by(focos, country), 
+    count=n()
+  )
+)
+
+casos_pais <- arrange(casos_pais, count)
+
+
+data_Map <- sp::merge(data_Map,casos_pais, by.x="sovereignt", by.y="country")
+
+mytext <- paste(
+  "Country: ", data_Map@data$name,"<br/>", 
+  "Events: ", data_Map@data$count, "<br/>", 
+  sep="") %>%
+  lapply(htmltools::HTML)
+
+
+bins <- c(1, 2,5, 20, 100, 500,1000)
+
+pal3 <- colorBin("YlOrRd",casos_pais$count, bins)
+
+mapa1 <- leaflet(data=data_Map) %>%
+  addTiles() %>% 
+  addPolygons(
+    weight=0.5,
+    fillColor = ~pal3(count),
+    fillOpacity = 0.5,
+    label = mytext,
+    labelOptions = labelOptions( 
+      style = list("font-weight" = "normal", padding = "3px 8px"), 
+      textsize = "13px", 
+      direction = "auto"))%>% 
+  addLegend(pal = pal3, values = ~count, opacity = 0.7, title = NULL,
+            position = "bottomright")
+
+mapa1
+```
+  
+
+
+### <span style="color: darkgreen;"> Events from `r year(today() - years(10))` to `r year(today())` </span>
+Here is a representation of the number of events of Rabies since 2012, globally and continentaly:
+```{r, echo=FALSE, fig.cap="Source: FAO Empres-i"}
+focos_reg_ano <- select(focos, idRegion, ano)
+europe <- filter(focos_reg_ano, idRegion == "Europe")
+africa <- filter(focos_reg_ano, idRegion == "Africa")
+asia <- filter(focos_reg_ano, idRegion == "Asia")
+americas <- filter(focos_reg_ano, idRegion == "Americas")
+oceania <- filter(focos_reg_ano, idRegion == "Oceania")
+
+hist_focos_ano_reg <- plot_ly(type = 'histogram', name = "Global",
+                              x = as.numeric(focos_reg_ano$ano), bingroup = 1) %>%
+  add_trace(
+    type='histogram', name = "Europe",
+    x = as.numeric(europe$ano),
+    bingroup=1) %>%
+  add_trace(
+    type='histogram', name = "Asia",
+    x = as.numeric(asia$ano),
+    bingroup=1) %>%
+  add_trace(
+    type='histogram', name = "Africa",
+    x = as.numeric(africa$ano),
+    bingroup=1) %>%
+  add_trace(
+    type='histogram', name = "Americas",
+    x = as.numeric(americas$ano),
+    bingroup=1) %>%
+  add_trace(
+    type='histogram', name = "Oceania",
+    x = as.numeric(oceania$ano),
+    bingroup=1) %>%
+  layout(
+    title = "Events by Year", 
+    xaxis = list(title = "Years"),
+    yaxis = list(title = "Events"),
+    bargap=0.1)
+
+hist_focos_ano_reg
+```
+
+****
+#### <span style="color: darkgreen;"> Diagnostic Tools </span>
+The disease may be suspected based on clinical signs, but laboratory tests are needed to confirm the diagnosis. Samples taken from dead animals must be sent to competent laboratories for diagnosis. 
+
+****
+#### <span style="color: darkgreen;"> Prevention and Control </span>
+Rabies appears on the list of animal diseases in WOAH Terrestrial Animal Health Code. It is therefore compulsorily for national Veterinary Authorities to notify WOAH of any rabies case in a timely manner. At the same time, countries may also voluntarily publish self-declaration for rabies-free status.
+High-quality anti-rabies vaccines for dogs, developed in compliance with WOAH Standards, are available. Vaccination of dogs is the preferred method of controlling and eliminating rabies worldwide. For epidemiological, ethical and economic reasons, the culling of animals that are potential reservoirs cannot be considered as the priority for control and
+elimination of rabies. All successful rabies elimination campaigns have included measures combining control and vaccination of stray dog populations and vaccination of all owned dogs.
+In wild animals, oral immunisation using vaccine-containing baits has produced excellent results in some animal species (fox, raccoon, skunk, etc.) and has proved an effective solution to control rabies in foxes in Western Europe.
+
+### <span style="color: darkgreen;"> **References**  </span>
+WOAH https://www.woah.org/app/uploads/2022/06/lumpy-skin-disease-final-v1-1forpublication.pdf Accessed: 2022-10-11
+
+Empres-i https://empres-i.apps.fao.org/ Accessed: 2022-10-11
+
